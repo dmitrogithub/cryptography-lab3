@@ -1,0 +1,30 @@
+# Compiled programs and build directories
+bin/
+build/
+*.exe
+*.obj
+*.o
+*.a
+*.lib
+*.pdb
+*.ilk
+
+# Local demonstration output and signing material
+examples/run-*/
+*.vpk
+*.vsk
+*.vsig
+*.vsigned
+recovered*.bin
+lab3-tests-*/
+
+# Python cache and local documents
+__pycache__/
+*.pyc
+*.docx
+*.pdf
+*.zip
+~$*
+
+# README files are intentionally excluded from this repository
+[Rr][Ee][Aa][Dd][Mm][Ee]*
