@@ -1,4 +1,4 @@
-/* File-signing utility for laboratory 3. Cryptography: supplied DSTU 9212 API. */
+/* Лабораторна робота 3. Робота з файлами через надану бібліотеку ДСТУ 9212. */
 #ifndef _WIN32
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -67,12 +67,20 @@ static int argument_error(const char *message)
 
 static int parse_options(int argc, char **argv, options *o)
 {
+    const char *names[] = {
+        "command", "file", "public-key", "private-key",
+        "type", "signing", "out", "signature"
+    };
+    const char **fields[] = {
+        &o->command, &o->file, &o->public_key, &o->private_key,
+        &o->type, &o->signing, &o->out, &o->signature
+    };
+    size_t field_count = sizeof(names) / sizeof(names[0]);
     int i;
     memset(o, 0, sizeof(*o));
     for (i = 1; i < argc; ++i) {
         const char *name, *value, *equal;
-        const char **slot = NULL;
-        size_t length;
+        size_t length, index;
         if (strncmp(argv[i], "--", 2) != 0)
             return argument_error("expected a named option beginning with --");
         name = argv[i] + 2;
@@ -85,21 +93,19 @@ static int parse_options(int argc, char **argv, options *o)
             value = argv[++i];
         }
         if (!*value) return argument_error("empty option value");
-#define OPTION(key, member) \
-        if (length == sizeof(key) - 1U && memcmp(name, key, length) == 0) slot = &o->member
-        OPTION("command", command);
-        else OPTION("file", file);
-        else OPTION("public-key", public_key);
-        else OPTION("private-key", private_key);
-        else OPTION("type", type);
-        else OPTION("signing", signing);
-        else OPTION("out", out);
-        else OPTION("signature", signature);
-#undef OPTION
-        if (!slot) return argument_error("unknown option");
-        if (*slot) return argument_error("duplicate option");
-        *slot = value;
+        for (index = 0; index < field_count; ++index) {
+            if (strlen(names[index]) == length &&
+                memcmp(name, names[index], length) == 0) break;
+        }
+        if (index == field_count) return argument_error("unknown option");
+        if (*fields[index]) return argument_error("duplicate option");
+        *fields[index] = value;
     }
+    return SUCCESS;
+}
+
+static int validate_options(const options *o)
+{
     if (!o->command) return argument_error("--command is required");
     if (strcmp(o->command, "generate") == 0) {
         if (!o->public_key || !o->private_key)
@@ -136,7 +142,7 @@ static int parse_options(int argc, char **argv, options *o)
 }
 
 #ifdef _WIN32
-/* UTF-8 inside the utility, UTF-16 at the Windows file-system boundary. */
+/* Шляхи з командного рядка зберігаються в UTF-8, Windows приймає UTF-16. */
 static wchar_t *wide_path(const char *path)
 {
     int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
@@ -353,7 +359,7 @@ static int sign_file(const options *o)
     uint8_t sig[DSTU9212_API_SIGNATURE_BYTES];
     size_t sig_len = 0;
     FILE *output = NULL;
-    int own_output = 0, result = FAILURE;
+    int own_output = 0, result = FAILURE, written;
     int attached = strcmp(o->type, "attached") == 0;
     dstu9212_status status;
     puts("[1/3] Reading the original file and validating the private-key container.");
@@ -378,9 +384,13 @@ static int sign_file(const options *o)
         fprintf(stderr, "Signing failed.\n"); goto cleanup;
     }
     printf("[3/3] Saving a %s VSL3 container.\n", o->type);
-    if (!write_container(output, attached ? ATTACHED : DETACHED,
-                         attached ? message.data : sig, attached ? message.size : sig_len,
-                         attached ? sig : NULL, attached ? sig_len : 0)) {
+    if (attached) {
+        /* У внутрішньому підписі після повідомлення записується підпис. */
+        written = write_container(output, ATTACHED, message.data, message.size, sig, sig_len);
+    } else {
+        written = write_container(output, DETACHED, sig, sig_len, NULL, 0);
+    }
+    if (!written) {
         fprintf(stderr, "Writing signature failed.\n"); goto cleanup;
     }
     if (!close_output(&output)) { fprintf(stderr, "Closing signature file failed.\n"); goto cleanup; }
@@ -449,7 +459,8 @@ static int run(int argc, char **argv)
     if (argc == 1 || (argc == 2 && strcmp(argv[1], "--help") == 0)) {
         help(); return SUCCESS;
     }
-    if (parse_options(argc, argv, &o) != SUCCESS) return FAILURE;
+    if (parse_options(argc, argv, &o) != SUCCESS ||
+        validate_options(&o) != SUCCESS) return FAILURE;
     if (strcmp(o.command, "generate") == 0) return generate(&o);
     if (strcmp(o.command, "sign") == 0) return sign_file(&o);
     return verify_file(&o);
